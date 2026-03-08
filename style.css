@@ -1,0 +1,223 @@
+:root {
+  --bg: #0d1117;
+  --panel: #141a22;
+  --panel-light: #1c2430;
+  --accent: #ffb454;
+  --accent-2: #6be675;
+  --text: #e6edf3;
+  --muted: #95a1b2;
+}
+
+* { box-sizing: border-box; font-family: "Press Start 2P", system-ui, sans-serif; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  height: 100vh;
+}
+
+#world {
+  position: relative;
+  padding: 16px;
+}
+
+#worldCanvas {
+  width: 100%;
+  height: calc(100vh - 32px);
+  border: 2px solid #303b4d;
+  background: #0f1620;
+  image-rendering: pixelated;
+}
+
+#overlay-label {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  background: rgba(10, 15, 25, 0.7);
+  padding: 8px 10px;
+  border: 1px solid #334155;
+  font-size: 10px;
+}
+
+#panel {
+  border-left: 2px solid #263041;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--panel-light);
+  padding: 12px;
+  border-bottom: 2px solid #263041;
+  font-size: 12px;
+}
+
+.panel-controls button {
+  background: transparent;
+  border: 1px solid #3b4659;
+  color: var(--text);
+  padding: 4px 8px;
+  margin-left: 6px;
+  cursor: pointer;
+}
+
+#panel-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 100%;
+}
+
+.panel-left, .panel-right {
+  padding: 16px;
+  overflow: auto;
+}
+
+.agent-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.agent-icon {
+  width: 32px;
+  height: 32px;
+  background: var(--accent);
+  border: 2px solid #000;
+}
+
+.agent-name { font-size: 12px; margin-bottom: 6px; }
+.agent-status { font-size: 10px; color: var(--muted); }
+
+.task-list-title { font-size: 10px; margin-bottom: 8px; color: var(--muted); }
+
+.task-list ul { list-style: none; padding: 0; margin: 0 0 12px 0; }
+.task-list li { font-size: 10px; margin-bottom: 8px; }
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-status {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.task-status.done { background: var(--accent-2); }
+
+.ghost {
+  background: transparent;
+  border: 1px solid #39465b;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.command-box input {
+  width: 100%;
+  padding: 8px;
+  background: #0f1620;
+  color: var(--text);
+  border: 1px solid #39465b;
+  margin-bottom: 8px;
+  font-size: 10px;
+}
+
+.command-actions button,
+.task-board-actions button,
+.arcade-buttons button,
+#addTaskBtn,
+#deployBtn {
+  background: var(--accent);
+  border: none;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 10px;
+  margin-right: 6px;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tab {
+  background: #0f1620;
+  border: 1px solid #39465b;
+  color: var(--text);
+  padding: 4px 6px;
+  font-size: 9px;
+}
+
+.tab.active { border-color: var(--accent); }
+
+.task-board {
+  background: #0f1620;
+  border: 1px solid #39465b;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.task-board-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.label { font-size: 9px; color: var(--muted); }
+
+.output {
+  border: 1px solid #39465b;
+  background: #0f1620;
+  padding: 10px;
+}
+
+.output-title { font-size: 10px; color: var(--muted); margin-bottom: 6px; }
+.output-log {
+  font-size: 9px;
+  line-height: 1.4;
+  max-height: 200px;
+  overflow: auto;
+}
+
+#arcadePanel {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  width: 320px;
+  background: var(--panel);
+  border: 2px solid #39465b;
+}
+
+#arcadePanel.hidden { display: none; }
+
+.arcade-body { padding: 12px; }
+
+.arcade-buttons { margin-bottom: 10px; }
+
+#arcadeScreen {
+  background: #0f1620;
+  border: 1px solid #39465b;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
