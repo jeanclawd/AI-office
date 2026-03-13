@@ -186,9 +186,9 @@ groundLayer.weightedRandomize(
        └───────────────────────────────────────┘
 ```
 
-### 5.2 Observation Serialization
+### 5.2 Observation Serialization (Phase 1: Observe)
 
-The game state is serialized into a compact JSON snapshot for the LLM:
+The visual game state is serialized for LLM consumption via `Entity.getData()`. Each entity (player, crop, NPC) stores all mutable state in Phaser's **Data Manager** (`setData`/`getData`), making extraction instantaneous — no traversal of deep class hierarchies needed.
 
 ```json
 {
@@ -196,6 +196,9 @@ The game state is serialized into a compact JSON snapshot for the LLM:
   "season": "spring",
   "day": 5,
   "weather": "sunny",
+  "player": { "x": 10, "y": 15, "gold": 50 },
+  "farm": { "crop": "tomato", "growthStage": 3 },
+  "npcs": [ { "id": "mayor", "mood": "happy" } ],
   "farmMap": [[0,0,4,5],[0,4,7,7],[0,0,4,6]],
   "agents": [
     {
@@ -214,6 +217,15 @@ The game state is serialized into a compact JSON snapshot for the LLM:
   }
 }
 ```
+
+> **Note from the field:** Including an **ASCII grid representation** of the tilemap in the LLM prompt significantly improves the agent's spatial reasoning compared to raw x/y coordinates. Example:
+> ```
+> . . T T . .
+> . S S S S .
+> . S M M S .
+> . . T T . .
+> ```
+> (`.` = grass, `T` = tilled, `S` = sprout, `M` = mature)
 
 ### 5.3 LLM Action Schema
 
@@ -310,27 +322,71 @@ function validateAction(action: unknown): action is GameAction {
 | `CHANGE_WEATHER` | weather | Update weather state |
 | `SPAWN_ENTITY` | type, x, y | Add NPC/animal |
 
-### 5.6 Communication Layer
+### 5.6 Communication Layer (Phase 2 & 3: Validate & Dispatch)
+
+The architecture splits cleanly between **server logic** and **client logic**:
 
 ```
-Browser (Phaser 3)              Backend (Node/FastAPI)
-─────────────────               ──────────────────────
-                  WebSocket
-  GameState ─────────────────► /ws/game
-  (observation)                    │
-                                   ▼
-                               LLM Orchestrator
-                               (prompt + tools)
-                                   │
-                                   ▼
-  Actions   ◄───────────────── Action[]
-  (injection)
+┌─────────────────────────────────┐  ┌──────────────────────────────────┐
+│     Server Logic                │  │     Client Logic (Phaser.js)     │
+│     (Python / LangGraph)        │  │                                  │
+│                                 │  │                                  │
+│  Game State ──► FastAPI Proxy   │  │  Validated ──► Action Handler    │
+│  JSON           Server          │  │  JSON Action    Function         │
+│                   │             │  │                   │              │
+│                   ├──► MongoDB  │  │                   ▼              │
+│                   │    Memory   │  │  scene.groundLayer.putTileAt()   │
+│                   │    Store    │  │                                  │
+│                   ▼             │  │                                  │
+│              LLM Client         │  │                                  │
+│              (OpenAI/Anthropic) │  │                                  │
+└─────────────────────────────────┘  └──────────────────────────────────┘
 ```
 
-- **WebSocket** for low-latency bidirectional communication.
-- **HTTP fallback** (`POST /api/game/action`) for environments where WebSocket is unavailable.
+**Server side:**
+- **Always proxy through a backend** to hide API keys and handle rate limiting. Never call LLM APIs directly from the browser.
+- **FastAPI** (Python/LangGraph) as the proxy server — receives game state JSON, persists to MongoDB memory store, forwards to LLM client.
+- **MongoDB** as the memory store for conversation history, enabling the LLM to maintain context across observation cycles.
+- LLM client calls OpenAI/Anthropic with structured output constraints.
+
+**Client side:**
+- **WebSockets** stream real-time NPC dialogue and urgent actions.
+- **HTTP polling** handles periodic world generation (crop growth, weather changes).
+- Validated JSON actions are dispatched to typed **Action Handler functions** that call Phaser APIs (e.g., `scene.groundLayer.putTileAt(...)`).
+
+**Configuration:**
 - **Tick rate**: Observations sent every N game ticks (configurable, default ~2 seconds).
 - **Debounce**: Player-initiated actions immediately sent; AI observations batched.
+- **HTTP fallback** (`POST /api/game/action`) for environments where WebSocket is unavailable.
+
+### 5.7 The AI Closed-Loop Engine
+
+The full cycle operates continuously **without a single page reload**:
+
+```
+                    Phase 1: OBSERVE
+                    Data Manager extracts
+                    State → JSON Payload
+                          │
+                          ▼
+                    Phase 2: PROCESS
+                    FastAPI validates against
+                    strict Schema; LLM generates
+                          │
+                          ▼
+                    Phase 3: INJECT
+                    Headless AIManager pulls
+                    from action queue
+                          │
+                          ▼
+                    Phase 4: RENDER
+                    Dynamic Textures & Tile arrays
+                    update screen seamlessly
+                          │
+                          └──► back to Phase 1
+```
+
+**The player acts. The headless scene observes. The backend generates. The dispatcher injects. The cycle continues without a single page reload.**
 
 ---
 
@@ -563,6 +619,42 @@ this.add.sprite(x, y, 'ai-composite');
 
 ## 10. Data Model
 
+### 10.0 Serialization-First Architecture
+
+Forego deep class inheritance. Use **mixin-based composition** and store all mutable state natively in Phaser's **Data Manager** (`setData`). This guarantees that extracting the `GameState` interface for the LLM is instantaneous.
+
+**Anti-pattern — Deep Class Inheritance:**
+```
+Entity → LivingEntity → Plant → Crop → Tomato
+```
+Deep hierarchies make serialization fragile — each level may hide state in private fields, requiring custom serializers.
+
+**Correct pattern — Mixin-based Composition:**
+```ts
+// Define behavior as a mixin object
+const Growable = {
+  initGrowable(this: Phaser.GameObjects.Sprite) {
+    this.setData('stage', 0);
+    this.setData('wateredToday', false);
+  },
+  grow(this: Phaser.GameObjects.Sprite) {
+    const stage = this.getData('stage');
+    if (stage < 3) this.setData('stage', stage + 1);
+  },
+};
+
+// Apply mixin to any sprite
+const tomatoSprite = this.add.sprite(x, y, 'crops');
+Object.assign(tomatoSprite, Growable);
+tomatoSprite.initGrowable();
+```
+
+**Why this matters for AI:**
+- `sprite.getData()` returns a flat key-value map — trivially serializable to JSON.
+- No hidden state in parent class fields.
+- Adding new behaviors (e.g., `Waterable`, `Harvestable`) is just another `Object.assign()` — no class refactoring.
+- The `ObservationSerializer` can iterate all game objects and call `entity.getData()` to build the complete snapshot.
+
 ### 10.1 FarmWorld
 
 ```json
@@ -616,20 +708,33 @@ this.add.sprite(x, y, 'ai-composite');
 
 ---
 
-## 11. Tech Stack
+## 11. Tech Stack & Asset Ecosystem
+
+### 11.1 Execution Stack
 
 | Layer | Technology | Rationale |
 |---|---|---|
-| Game Engine | Phaser 3.90.x | Mature tilemaps, runtime injection, pixel-art native |
-| Language | TypeScript | Type safety, aligns with Phaser 4 direction |
-| Bundler | Vite | Fast HMR, native ESM, minimal config |
-| UI Overlay | Preact or Svelte | Lightweight DOM layer for panels/HUD |
-| State Sync | Zustand | Minimal state management bridging game ↔ UI |
-| Backend | Node.js + Express | WebSocket + REST, JS ecosystem alignment |
-| Realtime | ws (native WebSocket) | Low overhead, no Socket.IO abstraction needed |
-| LLM | Claude API / OpenAI | Structured output for action schemas |
-| Pathfinding | EasyStar.js | Lightweight A* for grid-based maps |
-| Persistence | SQLite (dev) / Postgres (prod) | Game state snapshots |
+| Game Engine | **Phaser 3.90.x** | Mature tilemaps, runtime injection, pixel-art native |
+| UI Layer | **React** | Rich component ecosystem; bridges DOM panels to game canvas |
+| Language | **TypeScript** | Type safety, aligns with Phaser 4 direction |
+| Bundler | **Vite** | Fast HMR, native ESM, minimal config |
+| Backend | **FastAPI** (Python) | LangGraph integration, async WebSocket support |
+| Memory Store | **MongoDB** | Conversation history + game state snapshots for LLM context |
+| Realtime | **WebSocket** (native) | Low overhead bidirectional communication |
+| LLM | **Claude API / OpenAI** | Structured output for action schemas |
+| Pathfinding | **EasyStar.js** | Lightweight A* for grid-based maps |
+| State Sync | **Zustand** | Minimal state management bridging game ↔ UI |
+
+> **Quick start:** Use the official `create-phaser-game` CLI with the `template-react-ts` scaffold to get Phaser 3 + React + TypeScript + Vite wired up instantly.
+
+### 11.2 Asset Ecosystem
+
+| Asset Pack | License | Description |
+|---|---|---|
+| **Sprout Lands** | Commercial/Free tier | Complete farming tileset: crops, buildings, characters, animals, tools |
+| **LPC Farming Collection** | CC-licensed (Creative Commons) | Open-source farming sprites: fields, crops, fences, seasonal variants |
+
+**Reference implementation:** `mimikim/harvest-moon-phaser3-game` — a Phaser 3 Harvest Moon clone demonstrating tilemap farming, crop growth, and NPC interaction patterns.
 
 ---
 
@@ -661,25 +766,25 @@ ai-office/
 │   │   ├── ActionExecutor.ts    # Action[] → Phaser commands
 │   │   └── WebSocketClient.ts   # Backend communication
 │   ├── ui/
-│   │   ├── HUD.svelte           # Inventory, clock, status
-│   │   ├── AgentPanel.svelte    # Agent info + task assignment
-│   │   └── CommandBar.svelte    # NL command input
+│   │   ├── HUD.tsx              # Inventory, clock, status
+│   │   ├── AgentPanel.tsx       # Agent info + task assignment
+│   │   └── CommandBar.tsx       # NL command input
 │   └── assets/
 │       ├── tilesets/            # 16x16 pixel-art tilesets
 │       ├── sprites/             # Agent + NPC sprite atlases
 │       └── audio/               # SFX and ambient music
-├── server/
-│   ├── index.ts                 # Express + WebSocket server
+├── server/                        # Python / FastAPI backend
+│   ├── main.py                    # FastAPI app + WebSocket endpoint
 │   ├── llm/
-│   │   ├── orchestrator.ts      # LLM prompt construction + parsing
-│   │   ├── prompts.ts           # System/user prompt templates
-│   │   └── tools.ts             # Tool definitions for structured output
+│   │   ├── orchestrator.py        # LangGraph agent / LLM prompt construction
+│   │   ├── prompts.py             # System/user prompt templates
+│   │   └── tools.py               # Tool definitions for structured output
 │   ├── game/
-│   │   ├── state.ts             # Server-side game state (source of truth)
-│   │   └── actions.ts           # Action validation + execution
+│   │   ├── state.py               # Server-side game state (source of truth)
+│   │   └── actions.py             # Action validation + schema enforcement
 │   └── db/
-│       ├── schema.sql           # Tables for persistence
-│       └── queries.ts           # Save/load operations
+│       ├── models.py              # MongoDB document models
+│       └── memory.py              # Conversation history + state persistence
 └── public/
     └── assets/                  # Static assets served by Vite
 ```
