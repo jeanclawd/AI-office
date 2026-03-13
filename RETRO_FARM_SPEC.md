@@ -842,7 +842,18 @@ ai-office/
 
 ---
 
-## 15. References
+## 15. The Blueprint Distilled
+
+1. **State is Data:** Store all entity variables in the Phaser Data Manager for instant serialization.
+2. **Logic is Headless:** Isolate the AI WebSocket stream in its own invisible parallel scene.
+3. **Input is Strict:** Treat LLM outputs as untrusted data; force JSON schema validation through a local dispatcher.
+4. **Injection is Native:** Exploit Tiled 2D arrays and dynamic textures to manipulate the world instantly at runtime.
+
+*Build the farm. Let the AI tend it.*
+
+---
+
+## 16. References
 
 - Phaser 3 Documentation: phaser.io/docs
 - Phaser Tilemap API: `Phaser.Tilemaps.Tilemap`
