@@ -63,7 +63,7 @@ const config = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, FarmScene, UIScene],
+  scene: [BootScene, AIManagerScene, WorldScene, DialogScene, UIScene],
 };
 ```
 
@@ -109,7 +109,38 @@ const tileset = map.addTilesetImage('farm-tiles');
 const layer = map.createLayer(0, tileset, 0, 0);
 ```
 
-### 4.3 Tile Index Legend (Draft)
+### 4.3 Runtime Grid Manipulation API
+
+Grid manipulation occurs **instantly at runtime** via three key Phaser layer methods:
+
+| Method | Purpose | Use Case |
+|---|---|---|
+| `layer.putTileAt(newIndex, x, y)` | Target a single coordinate | Plant a seed, harvest one tile, place a fence post |
+| `layer.fill(index, x, y, w, h)` | Update coordinate blocks (rectangular region) | Till a field, flood an area with water tiles, clear a plot |
+| `layer.weightedRandomize(weights, x, y, w, h)` | Procedural terrain generation with weighted tile distribution | Generate natural-looking meadows, forests, varied soil patches |
+
+**Example — AI plants a row of crops:**
+```js
+// Single tile: plant a seed at (5, 3)
+cropsLayer.putTileAt(TILE.PLANTED_SEED, 5, 3);
+
+// Region: till a 4x3 plot for planting
+cropsLayer.fill(TILE.TILLED_SOIL, 3, 2, 4, 3);
+
+// Procedural: generate a mixed meadow
+groundLayer.weightedRandomize(
+  [
+    { index: TILE.GRASS, weight: 6 },
+    { index: TILE.FLOWER, weight: 2 },
+    { index: TILE.ROCK, weight: 1 },
+  ],
+  0, 0, 30, 20
+);
+```
+
+> **Crucial requirement:** All Tiled editor layers must use **uncompressed formats** (CSV or Base64). Compressed formats (zlib, gzip, zstd) are unsupported by Phaser's runtime tilemap parser.
+
+### 4.4 Tile Index Legend (Draft)
 
 | Index | Tile | Description |
 |---|---|---|
@@ -127,7 +158,7 @@ const layer = map.createLayer(0, tileset, 0, 0);
 | 11 | Rock | Obstacle (collision) |
 | 12 | Tree | Decorative tree (collision) |
 
-### 4.4 Multi-Layer Tilemap
+### 4.5 Multi-Layer Tilemap
 
 | Layer | Purpose | AI-Modifiable? |
 |---|---|---|
@@ -217,7 +248,53 @@ The LLM returns structured actions that the game engine executes:
 }
 ```
 
-### 5.4 Supported Action Types
+### 5.4 Data-Driven Firewall (Security)
+
+The game state is protected with a **strict data-driven firewall** between LLM output and the game engine.
+
+**Core principles:**
+- **Never execute code.** Never use `eval()`. Never interpret LLM output as executable JavaScript.
+- **Force structured JSON.** The LLM outputs structured JSON representing *what* happens. A local action dispatcher decides *how* it happens.
+- **Allowlist enforcement.** Every incoming action is validated against a `VALID_ACTIONS` allowlist before reaching the game engine.
+
+```ts
+const VALID_ACTIONS = [
+  'MOVE_AGENT',
+  'MODIFY_TILE',
+  'MODIFY_REGION',
+  'PLANT_CROP',
+  'HARVEST_CROP',
+  'WATER_CROP',
+  'BUILD_STRUCTURE',
+  'UPDATE_RESOURCE',
+  'AGENT_SPEAK',
+  'CHANGE_WEATHER',
+  'SPAWN_ENTITY',
+  'ADD_QUEST',
+] as const;
+
+type ValidAction = typeof VALID_ACTIONS[number];
+
+function validateAction(action: unknown): action is GameAction {
+  if (!action || typeof action !== 'object') return false;
+  const { type } = action as { type: string };
+  if (!VALID_ACTIONS.includes(type as ValidAction)) return false;
+  // Additional per-type parameter validation...
+  return true;
+}
+```
+
+**What the firewall blocks:**
+- Free-text narrative output (e.g., "The villager says hello and gives you an item...") — only structured JSON passes through
+- Unknown action types not in the allowlist
+- Actions with out-of-bounds coordinates or invalid parameters
+- Any attempt to inject executable code
+
+**What passes through:**
+- Valid structured JSON matching a known action type with valid parameters
+- Example: `{ "action": "ADD_QUEST", "quest_id": "q123", "target_npc": "villager_01" }`
+
+### 5.5 Supported Action Types
 
 | Action | Parameters | Effect |
 |---|---|---|
@@ -233,7 +310,7 @@ The LLM returns structured actions that the game engine executes:
 | `CHANGE_WEATHER` | weather | Update weather state |
 | `SPAWN_ENTITY` | type, x, y | Add NPC/animal |
 
-### 5.5 Communication Layer
+### 5.6 Communication Layer
 
 ```
 Browser (Phaser 3)              Backend (Node/FastAPI)
@@ -259,39 +336,102 @@ Browser (Phaser 3)              Backend (Node/FastAPI)
 
 ## 6. Scene Architecture
 
-### 6.1 Scene Graph
+The parallel scene manager isolates AI logic from the game world. There is **no limit** on simultaneously running scenes — AI logic, UI overlays, and game state operate independently without blocking each other.
+
+### 6.1 Four-Layer Scene Stack
 
 ```
-BootScene          → Load core assets, tileset spritesheets
-  │
-  ▼
-FarmScene          → Main gameplay: tilemap, agents, crops, weather
-  │
-  ▼
-UIScene (parallel) → HUD overlay: inventory, clock, agent panels
-  │
-  ▼
-DialogScene (overlay) → Speech bubbles, command input, reports
+┌─────────────────────────────────────────────┐
+│  UIScene              (top — DOM/canvas HUD) │  Clock, hearts, inventory slots
+├─────────────────────────────────────────────┤
+│  DialogScene          (overlay)              │  Speech bubbles, command bar, panels
+├─────────────────────────────────────────────┤
+│  WorldScene           (main rendering)       │  Tilemap, agents, crops, weather
+├─────────────────────────────────────────────┤
+│  AIManagerScene       (headless — no render) │  WebSocket, action queue, AI polling
+└─────────────────────────────────────────────┘
 ```
+
+All four scenes run simultaneously via `this.scene.launch()`. Each scene communicates through Phaser's event system (`this.scene.get('WorldScene').events.emit(...)`).
 
 ### 6.2 BootScene
 
 - Loads tileset spritesheet(s) and agent sprite atlases.
 - Initializes WebSocket connection to backend.
-- Transitions to FarmScene on completion.
+- Launches all four parallel scenes on completion.
 
-### 6.3 FarmScene
+### 6.3 WorldScene (formerly FarmScene)
 
 - Creates multi-layer tilemap from initial state (can be AI-generated or predefined).
 - Spawns agent sprites with animation state machines.
 - Runs the game loop: movement, crop growth timers, weather effects.
-- Exposes `injectActions(actions[])` method for the AI loop.
+- Exposes `injectActions(actions[])` method called by AIManagerScene.
+- Owns the camera and all renderable game objects.
 
 ### 6.4 UIScene
 
-- Runs in parallel with FarmScene (`this.scene.launch('UIScene')`).
+- Runs in parallel with WorldScene (`this.scene.launch('UIScene')`).
 - Renders inventory, day/season HUD, agent status cards.
 - Handles player input: click-to-command, NL command bar.
+- Renders above WorldScene — never affected by world camera movement.
+
+### 6.5 DialogScene
+
+- Overlay scene for modal interactions: speech bubbles, NL command input, report panels.
+- Captures input focus when active; passes through when inactive.
+
+### 6.6 AIManagerScene (Headless)
+
+A dedicated, **non-rendering** scene that runs in parallel to the world. It manages the WebSocket queue and periodic observation polling, ensuring asynchronous AI calls **never block the main render loop**.
+
+```ts
+class AIManagerScene extends Phaser.Scene {
+  private ws: WebSocket;
+  private actionQueue: GameAction[] = [];
+
+  create() {
+    // Connect to backend
+    this.ws = new WebSocket('ws://localhost:3001/ws/game');
+    this.ws.onmessage = (event) => {
+      const actions = JSON.parse(event.data);
+      // Validate each action against the firewall before queuing
+      for (const action of actions) {
+        if (this.validateAction(action)) {
+          this.actionQueue.push(action);
+        }
+      }
+    };
+
+    // Periodic observation polling via Phaser timer
+    this.time.addEvent({
+      delay: 2000,  // every 2 seconds
+      callback: this.sendObservation,
+      callbackScope: this,
+      loop: true,
+    });
+  }
+
+  update() {
+    // Process exactly 1 action per frame to avoid frame spikes
+    if (this.actionQueue.length > 0) {
+      const action = this.actionQueue.shift()!;
+      const worldScene = this.scene.get('WorldScene') as WorldScene;
+      worldScene.injectActions([action]);
+    }
+  }
+
+  private sendObservation() {
+    const worldScene = this.scene.get('WorldScene') as WorldScene;
+    const snapshot = worldScene.serializeState();
+    this.ws.send(JSON.stringify(snapshot));
+  }
+}
+```
+
+**Key design decisions:**
+- **1 action/frame** processing prevents frame-rate drops from batched AI responses.
+- `this.time.addEvent()` ties observation polling to Phaser's internal clock, not `setInterval`, so it pauses when the game is paused/backgrounded.
+- The scene has no `render()` cost — pure logic overhead only.
 
 ---
 
@@ -373,29 +513,51 @@ interface Agent {
 
 ## 9. Runtime Asset Injection
 
+Dynamic textures load cleanly **outside the preload phase**. The pipeline is: AI generates a dynamic URL → engine loader bypasses preload → live sprite manifests in-game.
+
 ### 9.1 Dynamic Texture Loading
 
 Phaser supports loading assets outside `preload()` using the Loader plugin:
 
 ```js
-// Load a new spritesheet at runtime (e.g., AI-generated crop)
-this.load.spritesheet('custom-crop', dynamicURL, {
-  frameWidth: 16,
-  frameHeight: 16,
-});
+// 1. AI generates a dynamic URL for a new asset
+const dynamicURL = 'https://api.example.com/sprites/custom-crop-001.png';
+
+// 2. Bypass the preload phase — load at runtime
+this.load.image('custom-crop', dynamicURL);
+this.load.start();
+
+// 3. Once loaded, the asset manifests as a live sprite
 this.load.once('complete', () => {
-  // Asset is now available for use in the scene
+  const sprite = this.add.sprite(100, 100, 'custom-crop');
+  // Or add as a tileset for tilemap use:
   map.addTilesetImage('custom-crop');
 });
-this.load.start();
 ```
 
-### 9.2 Use Cases for Runtime Injection
+### 9.2 Dynamic Textures API (v3.60+)
 
-- AI-generated custom crop sprites
-- Dynamically themed seasonal tile variants
+`addDynamicTexture('aiCanvas')` allows programmatic stamping — for example, compositing a crop frame onto a brown soil texture at runtime without needing a pre-built sprite sheet:
+
+```js
+// Create a dynamic texture canvas
+const dynTex = this.textures.addDynamicTexture('ai-composite', 16, 16);
+
+// Stamp base soil, then overlay crop sprite
+dynTex.stamp('farm-tiles', TILE.TILLED_SOIL, 0, 0);
+dynTex.stamp('crop-overlays', cropFrame, 0, 0);
+
+// Use the composite as a regular texture
+this.add.sprite(x, y, 'ai-composite');
+```
+
+### 9.3 Use Cases for Runtime Injection
+
+- AI-generated custom crop sprites from image generation APIs
+- Dynamically themed seasonal tile variants (snow overlay in winter, bloom in spring)
 - Player-uploaded farm decorations
-- Procedurally generated terrain textures
+- Procedurally generated terrain textures via `addDynamicTexture` compositing
+- NPC portrait generation for dynamically spawned villagers
 
 ---
 
@@ -483,10 +645,11 @@ ai-office/
 │   ├── main.ts                  # Phaser game bootstrap
 │   ├── config.ts                # Phaser config (pixelArt, roundPixels, etc.)
 │   ├── scenes/
-│   │   ├── BootScene.ts         # Asset loading
-│   │   ├── FarmScene.ts         # Main gameplay
-│   │   ├── UIScene.ts           # HUD overlay
-│   │   └── DialogScene.ts       # Speech bubbles, modals
+│   │   ├── BootScene.ts         # Asset loading, launches all scenes
+│   │   ├── WorldScene.ts        # Main gameplay (tilemap, agents, crops)
+│   │   ├── UIScene.ts           # HUD overlay (inventory, clock, status)
+│   │   ├── DialogScene.ts       # Speech bubbles, command input, modals
+│   │   └── AIManagerScene.ts    # Headless: WebSocket, action queue, AI polling
 │   ├── systems/
 │   │   ├── AgentSystem.ts       # Agent state machine + pathfinding
 │   │   ├── CropSystem.ts        # Growth stages, planting, harvesting
