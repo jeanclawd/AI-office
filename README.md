@@ -2,6 +2,10 @@
 
 A pixel-perfect retro farming simulation where AI agents tend a dynamic, tilemap-driven world. Built with **Phaser 3** and integrated with backend **LLMs** via a closed-loop observation → generation → injection engine.
 
+![AI Retro Farm Screenshot](./screenshot.png)
+
+> Live demo: [https://jean-clawd.com/lab](https://jean-clawd.com/lab)
+
 ## The Blueprint Distilled
 
 1. **State is Data:** Store all entity variables in the Phaser Data Manager for instant serialization.
@@ -11,39 +15,51 @@ A pixel-perfect retro farming simulation where AI agents tend a dynamic, tilemap
 
 *Build the farm. Let the AI tend it.*
 
+## How to Play
+
+- **Click** tiles to interact with the selected tool
+- **`[1]` Till** → **`[2]` Plant** → **`[3]` Water** → **`[4]` Harvest**
+- Switch crops: **`[Q]`** Tomato · **`[W]`** Carrot · **`[E]`** Corn · **`[R]`** Wheat
+- Watch Noe, Tibo and Lisa (the AI agents) autonomously farm alongside you
+
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Game Engine | Phaser 3.90.x |
-| UI Layer | React |
 | Language | TypeScript |
 | Build Tool | Vite |
-| Backend | FastAPI (Python / LangGraph) |
-| Memory Store | MongoDB |
-| LLM | Claude API / OpenAI |
+| Backend (planned) | FastAPI + LangGraph |
+| Memory Store (planned) | MongoDB |
+| LLM (planned) | Claude API |
 
 ## Quick Start
 
-Scaffold the project instantly with the official Phaser CLI:
-
 ```bash
-npm create phaser-game@latest -- --template react-ts
+npm install
+npm run dev
 ```
 
-## Current MVP
-
-The `index.html` file contains a standalone vanilla JS prototype of the AI-Office concept:
+Or build for production:
 
 ```bash
-open index.html
+npm run build
+npm run preview
 ```
 
-No build step required for the MVP.
+## Architecture
+
+Three parallel Phaser scenes:
+
+- **`WorldScene`** — tilemap, agents, farming mechanics, game state
+- **`UIScene`** — HUD overlay (gold, day, tools, AI activity log)
+- **`AIManagerScene`** — headless AI loop: observe → generate → inject
+
+Every 6 seconds the AI serializes the full game state to JSON, runs its decision logic, and injects validated actions back into the world. Currently using heuristics; designed to swap in a real LLM call over WebSocket.
 
 ## Documentation
 
-- **[RETRO_FARM_SPEC.md](./RETRO_FARM_SPEC.md)** — Full technical specification (architecture, AI loop, data models, delivery milestones)
+- **[RETRO_FARM_SPEC.md](./RETRO_FARM_SPEC.md)** — Full technical specification
 - **[PRD.md](./PRD.md)** — Product requirements document
 - **[TECH_SPEC.md](./TECH_SPEC.md)** — Original AI-Office technical spec
-- **[requirements.md](./requirements.md)** — Raw requirements from demo video analysis
+- **[AUTONOMOUS_OFFICE.md](./AUTONOMOUS_OFFICE.md)** — Blueprint distilled from slide deck
