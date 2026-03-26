@@ -1,65 +1,48 @@
-# AI-Driven Retro Farm
+# AI Office 🏢
 
-A pixel-perfect retro farming simulation where AI agents tend a dynamic, tilemap-driven world. Built with **Phaser 3** and integrated with backend **LLMs** via a closed-loop observation → generation → injection engine.
+A pixel-art 2D office simulator where AI agents operate in a corporate world. This is the original MVP concept — built with vanilla canvas, no dependencies, runs straight in the browser.
 
-![AI Retro Farm Screenshot](./screenshot.png)
+> 🌾 This concept evolved into [AI-farm](https://github.com/jeanclawd/AI-farm) — a full Phaser 3 implementation with an autonomous LLM agent loop.
 
-> Live demo: [https://jean-clawd.com/lab](https://jean-clawd.com/lab)
+**Live demo:** [jean-clawd.com/lab](https://jean-clawd.com/lab)
 
-## The Blueprint Distilled
+---
 
-1. **State is Data:** Store all entity variables in the Phaser Data Manager for instant serialization.
-2. **Logic is Headless:** Isolate the AI WebSocket stream in its own invisible parallel scene.
-3. **Input is Strict:** Treat LLM outputs as untrusted data; force JSON schema validation through a local dispatcher.
-4. **Injection is Native:** Exploit Tiled 2D arrays and dynamic textures to manipulate the world instantly at runtime.
+## What It Is
 
-*Build the farm. Let the AI tend it.*
+A minimal runnable prototype of the AI-Office concept, reverse-engineered from a demo video:
 
-## How to Play
+- Pixel-art styled 2D office map (canvas)
+- Three agents with names and status labels
+- Manager Office panel with task assignment and output log
+- Simulated agent task completion
+- Arcade panel (Pong/Tetris placeholder)
 
-- **Click** tiles to interact with the selected tool
-- **`[1]` Till** → **`[2]` Plant** → **`[3]` Water** → **`[4]` Harvest**
-- Switch crops: **`[Q]`** Tomato · **`[W]`** Carrot · **`[E]`** Corn · **`[R]`** Wheat
-- Watch Noe, Tibo and Lisa (the AI agents) autonomously farm alongside you
+## Run
 
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Game Engine | Phaser 3.90.x |
-| Language | TypeScript |
-| Build Tool | Vite |
-| Backend (planned) | FastAPI + LangGraph |
-| Memory Store (planned) | MongoDB |
-| LLM (planned) | Claude API |
-
-## Quick Start
+No build step. Just open in browser:
 
 ```bash
-npm install
-npm run dev
+open index.html
 ```
 
-Or build for production:
+## The Vision
 
-```bash
-npm run build
-npm run preview
-```
+An autonomous corporate sandbox where AI agents live and work — attending meetings, managing projects, taking coffee breaks. The full architectural blueprint lives in [Autonomous_Office_Blueprint.pdf](./Autonomous_Office_Blueprint.pdf).
 
-## Architecture
+Key pillars:
+- **LLM Agent Framework** — orchestrates tasks and behaviors
+- **Web-native client** — renders the world and UI
+- **Real-time simulation** — keeps agents and world in sync
+- **Autonomous NPC behavior** — background activity without player input
 
-Three parallel Phaser scenes:
+## Docs
 
-- **`WorldScene`** — tilemap, agents, farming mechanics, game state
-- **`UIScene`** — HUD overlay (gold, day, tools, AI activity log)
-- **`AIManagerScene`** — headless AI loop: observe → generate → inject
+- [PRD.md](./PRD.md) — product requirements (reverse-engineered from demo video)
+- [TECH_SPEC.md](./TECH_SPEC.md) — technical spec and delivery plan
+- [requirements.md](./requirements.md) — raw requirements from video analysis
+- [Autonomous_Office_Blueprint.pdf](./Autonomous_Office_Blueprint.pdf) — full blueprint
 
-Every 6 seconds the AI serializes the full game state to JSON, runs its decision logic, and injects validated actions back into the world. Currently using heuristics; designed to swap in a real LLM call over WebSocket.
+## Related
 
-## Documentation
-
-- **[RETRO_FARM_SPEC.md](./RETRO_FARM_SPEC.md)** — Full technical specification
-- **[PRD.md](./PRD.md)** — Product requirements document
-- **[TECH_SPEC.md](./TECH_SPEC.md)** — Original AI-Office technical spec
-- **[AUTONOMOUS_OFFICE.md](./AUTONOMOUS_OFFICE.md)** — Blueprint distilled from slide deck
+- [AI-farm](https://github.com/jeanclawd/AI-farm) — the Phaser 3 evolution of this concept, with working AI agents

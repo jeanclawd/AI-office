@@ -1,26 +1,120 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Retro Farm</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #1a1a2e;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      overflow: hidden;
-    }
-    canvas {
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
-    }
-  </style>
+  <title>AI‑Office MVP</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <script type="module" src="/src/main.ts"></script>
+  <div id="app">
+    <div id="world">
+      <canvas id="worldCanvas" width="900" height="540"></canvas>
+      <div id="overlay-label">AI‑Office MVP</div>
+    </div>
+
+    <div id="panel">
+      <div class="panel-header">
+        <span id="panel-title">MANAGER OFFICE</span>
+        <div class="panel-controls">
+          <button id="minimizeBtn">_</button>
+          <button id="closeBtn">×</button>
+        </div>
+      </div>
+
+      <div id="panel-content">
+        <section class="panel-left">
+          <div class="agent-card">
+            <div class="agent-icon" id="agentIcon"></div>
+            <div>
+              <div class="agent-name" id="agentName">AGENT: Noe</div>
+              <div class="agent-status" id="agentStatus">Status: Idle</div>
+            </div>
+          </div>
+
+          <div class="task-list">
+            <div class="task-list-title">TASKS</div>
+            <ul id="taskList"></ul>
+            <button class="ghost" id="saveTemplateBtn">SAVE AS TEMPLATE</button>
+          </div>
+
+          <div class="command-box">
+            <input id="commandInput" type="text" placeholder="Type your command…" />
+            <div class="command-actions">
+              <button id="sendBtn">Send</button>
+              <button id="undoBtn">Undo</button>
+              <button id="clearBtn">Clear</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-right">
+          <div class="tabs">
+            <button class="tab active">CURRENT</button>
+            <button class="tab">HISTORY</button>
+            <button class="tab">PROJECTS</button>
+            <button class="tab">ANALYTICS</button>
+            <button class="tab">SETTINGS</button>
+          </div>
+
+          <div class="task-board">
+            <div class="task-board-row">
+              <div>
+                <div class="label">CURRENT TASK:</div>
+                <div id="currentTask">None</div>
+              </div>
+              <div>
+                <div class="label">DEPLOYED TASKS</div>
+                <div id="deploySummary">0 / 3 agents</div>
+              </div>
+            </div>
+            <div class="task-board-actions">
+              <button id="addTaskBtn">+ ADD NEW TASK</button>
+              <button id="deployBtn">DEPLOY</button>
+            </div>
+            <details>
+              <summary>Deployment Options</summary>
+              <div class="deployment-options">
+                <label><input type="checkbox" checked /> Noe</label>
+                <label><input type="checkbox" checked /> Tibo</label>
+                <label><input type="checkbox" checked /> Lisa</label>
+              </div>
+            </details>
+            <details>
+              <summary>Full Report</summary>
+              <div class="report">
+                This is a placeholder for a generated report. In the full build, this panel
+                renders Markdown or HTML output from agent tasks.
+              </div>
+            </details>
+          </div>
+
+          <div class="output">
+            <div class="output-title">OUTPUT</div>
+            <div id="outputLog" class="output-log"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div id="arcadePanel" class="hidden">
+      <div class="panel-header">
+        <span>ARCADE TABLE</span>
+        <div class="panel-controls">
+          <button id="arcadeCloseBtn">×</button>
+        </div>
+      </div>
+      <div class="arcade-body">
+        <div class="arcade-buttons">
+          <button id="pongBtn">PONG</button>
+          <button id="tetrisBtn">TETRIS</button>
+          <button id="arcadeExitBtn">EXIT</button>
+        </div>
+        <div id="arcadeScreen">Select a game to start.</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
 </body>
 </html>
