@@ -9,8 +9,12 @@
 <body>
   <div id="app">
     <div id="world">
-      <canvas id="worldCanvas" width="900" height="540"></canvas>
-      <div id="overlay-label">AI‑Office MVP</div>
+      <canvas id="worldCanvas" width="960" height="576"></canvas>
+      <div id="overlay-label">AI‑Office</div>
+      <div id="sim-controls">
+        <button id="pauseBtn" title="Pause / resume">❚❚</button>
+        <button id="speedBtn" title="Sim speed">1x</button>
+      </div>
     </div>
 
     <div id="panel">
@@ -26,9 +30,11 @@
         <section class="panel-left">
           <div class="agent-card">
             <div class="agent-icon" id="agentIcon"></div>
-            <div>
+            <div class="agent-meta">
               <div class="agent-name" id="agentName">AGENT: Noe</div>
               <div class="agent-status" id="agentStatus">Status: Idle</div>
+              <div class="stat-row"><span class="stat-label">NRG</span><span class="stat-bar"><span id="energyBar" class="stat-fill energy"></span></span></div>
+              <div class="stat-row"><span class="stat-label">MRL</span><span class="stat-bar"><span id="moraleBar" class="stat-fill morale"></span></span></div>
             </div>
           </div>
 
@@ -74,10 +80,10 @@
             </div>
             <details>
               <summary>Deployment Options</summary>
-              <div class="deployment-options">
-                <label><input type="checkbox" checked /> Noe</label>
-                <label><input type="checkbox" checked /> Tibo</label>
-                <label><input type="checkbox" checked /> Lisa</label>
+              <div class="deployment-options" id="deployOptions">
+                <label><input type="checkbox" data-agent="noe" checked /> Noe</label>
+                <label><input type="checkbox" data-agent="tibo" checked /> Tibo</label>
+                <label><input type="checkbox" data-agent="lisa" checked /> Lisa</label>
               </div>
             </details>
             <details>
@@ -115,6 +121,8 @@
     </div>
   </div>
 
+  <script src="sim.js"></script>
+  <script src="render.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

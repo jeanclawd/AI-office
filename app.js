@@ -1,234 +1,249 @@
-const canvas = document.getElementById("worldCanvas");
-const ctx = canvas.getContext("2d");
+/**
+ * AI-Office front end: wires the deterministic sim (sim.js) to the procedural
+ * renderer (render.js) and the Manager Office panel.
+ *
+ * URL overrides (repeatable captures, same idea as AI-farm's ?time=&weather=):
+ *   ?seed=42     seed the episode
+ *   ?speed=2     start at 2x (1|2|4)
+ *   ?time=0.6    freeze the time of day (0=morning, ~0.55-0.8=night)
+ *   ?paused=1    start paused
+ */
+"use strict";
 
-const TILE = 30;
-const COLS = 30;
-const ROWS = 18;
+(function () {
+  var Sim = OfficeSim, R = OfficeRender;
 
-const world = {
-  desks: [
-    { id: "desk_noe", x: 6, y: 5 },
-    { id: "desk_tibo", x: 10, y: 5 },
-    { id: "desk_lisa", x: 14, y: 5 }
-  ],
-  arcade: { id: "arcade", x: 22, y: 11 }
-};
+  // --- Boot -------------------------------------------------------------------
 
-const agents = [
-  { id: "noe", name: "Noe", color: "#ffb454", x: 2, y: 4, state: "Idle", target: null, desk: world.desks[0] },
-  { id: "tibo", name: "Tibo", color: "#6be675", x: 3, y: 10, state: "Idle", target: null, desk: world.desks[1] },
-  { id: "lisa", name: "Lisa", color: "#8bb8ff", x: 4, y: 14, state: "Idle", target: null, desk: world.desks[2] }
-];
+  var params = new URLSearchParams(location.search);
+  var seed = params.has("seed") ? Number(params.get("seed")) >>> 0 : 20260824;
+  var timeOverride = params.has("time") ? Number(params.get("time")) : null;
+  var speed = [1, 2, 4].indexOf(Number(params.get("speed"))) !== -1 ? Number(params.get("speed")) : 1;
+  var paused = params.get("paused") === "1";
 
-let currentAgent = agents[0];
-let tasks = [];
-let taskId = 1;
+  R.init();
+  var state = Sim.createState(seed);
 
-const agentNameEl = document.getElementById("agentName");
-const agentStatusEl = document.getElementById("agentStatus");
-const taskListEl = document.getElementById("taskList");
-const commandInput = document.getElementById("commandInput");
-const outputLog = document.getElementById("outputLog");
-const currentTaskEl = document.getElementById("currentTask");
-const deploySummaryEl = document.getElementById("deploySummary");
+  var canvas = document.getElementById("worldCanvas");
+  var ctx = canvas.getContext("2d");
 
-const arcadePanel = document.getElementById("arcadePanel");
-const arcadeScreen = document.getElementById("arcadeScreen");
+  /** Integer-friendly fit: largest scale of the native frame that fits the pane. */
+  function fitCanvas() {
+    var pane = document.getElementById("world");
+    var maxW = pane.clientWidth || R.W;
+    var scale = Math.max(1, Math.floor(maxW / R.W));
+    if (R.W * scale > maxW) scale = Math.max(1, scale - 1);
+    canvas.width = R.W * scale;
+    canvas.height = R.H * scale;
+  }
+  fitCanvas();
+  window.addEventListener("resize", fitCanvas);
 
-function log(message) {
-  const div = document.createElement("div");
-  div.textContent = `> ${message}`;
-  outputLog.prepend(div);
-}
+  // --- UI handles --------------------------------------------------------------
 
-function setCurrentAgent(agent) {
-  currentAgent = agent;
-  agentNameEl.textContent = `AGENT: ${agent.name}`;
-  agentStatusEl.textContent = `Status: ${agent.state}`;
-  document.getElementById("agentIcon").style.background = agent.color;
-}
+  var agentNameEl = document.getElementById("agentName");
+  var agentStatusEl = document.getElementById("agentStatus");
+  var energyBarEl = document.getElementById("energyBar");
+  var moraleBarEl = document.getElementById("moraleBar");
+  var taskListEl = document.getElementById("taskList");
+  var commandInput = document.getElementById("commandInput");
+  var outputLog = document.getElementById("outputLog");
+  var currentTaskEl = document.getElementById("currentTask");
+  var deploySummaryEl = document.getElementById("deploySummary");
+  var arcadePanel = document.getElementById("arcadePanel");
+  var arcadeScreen = document.getElementById("arcadeScreen");
+  var pauseBtn = document.getElementById("pauseBtn");
+  var speedBtn = document.getElementById("speedBtn");
 
-function renderTasks() {
-  taskListEl.innerHTML = "";
-  tasks.forEach(task => {
-    const li = document.createElement("li");
-    li.className = "task-item";
-    const status = document.createElement("span");
-    status.className = `task-status ${task.status === "Done" ? "done" : ""}`;
-    const text = document.createElement("span");
-    text.textContent = task.title;
-    li.append(status, text);
-    taskListEl.appendChild(li);
-  });
+  var AGENT_COLORS = { noe: "#ffb454", tibo: "#6be675", lisa: "#8bb8ff" };
+  var selectedId = state.agents[0].id;
 
-  const active = tasks.find(t => t.status === "In Progress");
-  currentTaskEl.textContent = active ? active.title : "None";
-  const activeCount = tasks.filter(t => t.status === "In Progress").length;
-  deploySummaryEl.textContent = `${activeCount} / ${agents.length} agents`;
-}
+  function selected() { return Sim.agentById(state, selectedId); }
 
-function createTask(command, targetAgents = [currentAgent]) {
-  const task = {
-    id: taskId++,
-    title: command,
-    status: "In Progress",
-    agents: targetAgents.map(a => a.id)
-  };
-  tasks.unshift(task);
-  renderTasks();
+  function setCurrentAgent(agent) {
+    selectedId = agent.id;
+    document.getElementById("agentIcon").style.background = AGENT_COLORS[agent.id] || "#888";
+    refreshAgentCard();
+  }
 
-  targetAgents.forEach(agent => {
-    agent.state = "Working";
-    agent.target = { x: agent.desk.x, y: agent.desk.y };
-  });
+  function refreshAgentCard() {
+    var a = selected();
+    agentNameEl.textContent = "AGENT: " + a.name;
+    var label = a.state.charAt(0).toUpperCase() + a.state.slice(1);
+    agentStatusEl.textContent = "Status: " + label;
+    energyBarEl.style.width = Math.round(a.energy) + "%";
+    moraleBarEl.style.width = Math.round(a.morale) + "%";
+  }
 
-  log(`Task created: ${command} (assigned to ${targetAgents.map(a => a.name).join(", ")})`);
+  // --- Tasks & log ----------------------------------------------------------------
 
-  setTimeout(() => {
-    task.status = "Done";
-    targetAgents.forEach(agent => {
-      agent.state = "Idle";
-      agent.target = null;
+  function renderTasks() {
+    taskListEl.innerHTML = "";
+    state.tasks.slice(0, 8).forEach(function (task) {
+      var li = document.createElement("li");
+      li.className = "task-item";
+      var status = document.createElement("span");
+      status.className = "task-status" + (task.status === "Done" ? " done" : "");
+      var text = document.createElement("span");
+      text.className = "task-text";
+      var pct = Math.round(100 * task.progress / task.units);
+      text.textContent = "#" + task.id + " " + task.title;
+      var bar = document.createElement("span");
+      bar.className = "task-progress";
+      var fill = document.createElement("span");
+      fill.className = "task-progress-fill";
+      fill.style.width = pct + "%";
+      bar.appendChild(fill);
+      li.append(status, text, bar);
+      taskListEl.appendChild(li);
     });
-    log(`Task completed: ${command}`);
+
+    var active = state.tasks.find(function (t) { return t.status === "In Progress"; });
+    currentTaskEl.textContent = active ? active.title : "None";
+    var busy = state.agents.filter(function (a) { return a.taskId !== null; }).length;
+    deploySummaryEl.textContent = busy + " / " + state.agents.length + " agents";
+  }
+
+  var lastEventId = -1;
+  function drainEvents() {
+    var fresh = state.events.filter(function (e) { return e.id > lastEventId; });
+    if (!fresh.length) return;
+    fresh.forEach(function (e) {
+      var div = document.createElement("div");
+      div.textContent = "> [t" + e.tick + "] " + e.msg;
+      outputLog.prepend(div);
+    });
+    while (outputLog.childNodes.length > 60) outputLog.removeChild(outputLog.lastChild);
+    lastEventId = fresh[fresh.length - 1].id;
     renderTasks();
-    setCurrentAgent(currentAgent);
-  }, 4000);
-}
-
-function handleCommand() {
-  const cmd = commandInput.value.trim();
-  if (!cmd) return;
-  createTask(cmd);
-  commandInput.value = "";
-}
-
-function deployAll() {
-  const cmd = commandInput.value.trim() || "Deploy current task";
-  createTask(cmd, agents);
-}
-
-// UI events
-
-document.getElementById("sendBtn").addEventListener("click", handleCommand);
-commandInput.addEventListener("keydown", e => {
-  if (e.key === "Enter") handleCommand();
-});
-
-document.getElementById("clearBtn").addEventListener("click", () => commandInput.value = "");
-
-document.getElementById("undoBtn").addEventListener("click", () => {
-  commandInput.value = commandInput.value.slice(0, -1);
-});
-
-document.getElementById("deployBtn").addEventListener("click", deployAll);
-
-document.getElementById("addTaskBtn").addEventListener("click", () => {
-  commandInput.focus();
-  commandInput.value = "Create a simple react app";
-});
-
-// Arcade panel
-
-document.getElementById("arcadeCloseBtn").addEventListener("click", () => arcadePanel.classList.add("hidden"));
-
-document.getElementById("arcadeExitBtn").addEventListener("click", () => arcadePanel.classList.add("hidden"));
-
-document.getElementById("pongBtn").addEventListener("click", () => {
-  arcadeScreen.textContent = "PONG — (MVP placeholder)";
-});
-
-document.getElementById("tetrisBtn").addEventListener("click", () => {
-  arcadeScreen.textContent = "TETRIS — (MVP placeholder)";
-});
-
-// Panel controls
-
-document.getElementById("minimizeBtn").addEventListener("click", () => {
-  document.getElementById("panel-content").classList.toggle("hidden");
-});
-
-document.getElementById("closeBtn").addEventListener("click", () => {
-  document.getElementById("panel").classList.toggle("hidden");
-});
-
-// World rendering
-function drawWorld() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (let y = 0; y < ROWS; y++) {
-    for (let x = 0; x < COLS; x++) {
-      ctx.fillStyle = y < 8 ? "#16324f" : "#2b2f3a";
-      ctx.fillRect(x * TILE, y * TILE, TILE - 1, TILE - 1);
-    }
   }
 
-  // desks
-  world.desks.forEach(desk => {
-    ctx.fillStyle = "#c79b5b";
-    ctx.fillRect(desk.x * TILE, desk.y * TILE, TILE, TILE);
+  function checkedAgents() {
+    var boxes = document.querySelectorAll("#deployOptions input[type=checkbox]");
+    var ids = [];
+    boxes.forEach(function (b) { if (b.checked) ids.push(b.dataset.agent); });
+    return ids.length ? ids : [selectedId];
+  }
+
+  function handleCommand() {
+    var cmd = commandInput.value.trim();
+    if (!cmd) return;
+    Sim.assignTask(state, cmd, [selectedId]);
+    commandInput.value = "";
+    renderTasks();
+  }
+
+  function deployAll() {
+    var cmd = commandInput.value.trim() || "Deploy current task";
+    Sim.assignTask(state, cmd, checkedAgents());
+    commandInput.value = "";
+    renderTasks();
+  }
+
+  // --- UI events -------------------------------------------------------------------
+
+  document.getElementById("sendBtn").addEventListener("click", handleCommand);
+  commandInput.addEventListener("keydown", function (e) { if (e.key === "Enter") handleCommand(); });
+  document.getElementById("clearBtn").addEventListener("click", function () { commandInput.value = ""; });
+  document.getElementById("undoBtn").addEventListener("click", function () {
+    commandInput.value = commandInput.value.slice(0, -1);
+  });
+  document.getElementById("deployBtn").addEventListener("click", deployAll);
+  document.getElementById("addTaskBtn").addEventListener("click", function () {
+    commandInput.focus();
+    commandInput.value = "Create a simple react app";
   });
 
-  // arcade
-  ctx.fillStyle = "#9b59b6";
-  ctx.fillRect(world.arcade.x * TILE, world.arcade.y * TILE, TILE, TILE);
-
-  // agents
-  agents.forEach(agent => {
-    ctx.fillStyle = agent.color;
-    ctx.fillRect(agent.x * TILE + 6, agent.y * TILE + 6, TILE - 12, TILE - 12);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "8px monospace";
-    ctx.fillText(agent.name, agent.x * TILE + 2, agent.y * TILE - 2);
+  pauseBtn.addEventListener("click", function () {
+    paused = !paused;
+    pauseBtn.textContent = paused ? "▶" : "❚❚";
   });
-}
-
-function tick() {
-  agents.forEach(agent => {
-    if (agent.target) {
-      if (Math.abs(agent.target.x - agent.x) > 0) {
-        agent.x += Math.sign(agent.target.x - agent.x) * 0.04;
-      }
-      if (Math.abs(agent.target.y - agent.y) > 0) {
-        agent.y += Math.sign(agent.target.y - agent.y) * 0.04;
-      }
-      if (Math.abs(agent.target.x - agent.x) < 0.05 && Math.abs(agent.target.y - agent.y) < 0.05) {
-        agent.x = agent.target.x;
-        agent.y = agent.target.y;
-      }
-    }
+  speedBtn.addEventListener("click", function () {
+    speed = speed === 1 ? 2 : speed === 2 ? 4 : 1;
+    speedBtn.textContent = speed + "x";
   });
-  drawWorld();
-  requestAnimationFrame(tick);
-}
+  pauseBtn.textContent = paused ? "▶" : "❚❚";
+  speedBtn.textContent = speed + "x";
 
-canvas.addEventListener("click", (e) => {
-  const rect = canvas.getBoundingClientRect();
-  const x = Math.floor((e.clientX - rect.left) / TILE);
-  const y = Math.floor((e.clientY - rect.top) / TILE);
+  // Arcade panel
+  document.getElementById("arcadeCloseBtn").addEventListener("click", function () { arcadePanel.classList.add("hidden"); });
+  document.getElementById("arcadeExitBtn").addEventListener("click", function () { arcadePanel.classList.add("hidden"); });
+  document.getElementById("pongBtn").addEventListener("click", function () {
+    arcadeScreen.textContent = "PONG — " + selected().name + " is on it.";
+    Sim.sendToArcade(state, selectedId);
+  });
+  document.getElementById("tetrisBtn").addEventListener("click", function () {
+    arcadeScreen.textContent = "TETRIS — " + selected().name + " is on it.";
+    Sim.sendToArcade(state, selectedId);
+  });
 
-  const desk = world.desks.find(d => d.x === x && d.y === y);
-  if (desk) {
-    const agent = agents.find(a => a.desk.id === desk.id);
-    if (agent) {
+  // Panel controls
+  document.getElementById("minimizeBtn").addEventListener("click", function () {
+    document.getElementById("panel-content").classList.toggle("hidden");
+  });
+  document.getElementById("closeBtn").addEventListener("click", function () {
+    document.getElementById("panel").classList.toggle("hidden");
+  });
+
+  // World clicks: select an agent by desk, or open the arcade.
+  canvas.addEventListener("click", function (e) {
+    var rect = canvas.getBoundingClientRect();
+    var scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+    var pxScale = canvas.width / R.W;
+    var x = Math.floor((e.clientX - rect.left) * scaleX / (R.TILE * pxScale));
+    var y = Math.floor((e.clientY - rect.top) * scaleY / (R.TILE * pxScale));
+
+    var desk = Sim.MAP.desks.find(function (d) { return d.x === x && (d.y === y || d.y + 1 === y); });
+    if (desk) {
+      var agent = state.agents[Sim.MAP.desks.indexOf(desk)];
       setCurrentAgent(agent);
-      log(`Opened Manager Office for ${agent.name}`);
+      appendLocal("Opened Manager Office for " + agent.name + ".");
+      return;
     }
-    return;
+    var arc = Sim.MAP.arcade;
+    if (x === arc.x && y >= arc.y - 1 && y <= arc.y + 1) {
+      arcadePanel.classList.remove("hidden");
+      return;
+    }
+    // otherwise: select the nearest agent
+    var best = null, bestD = 2.5;
+    state.agents.forEach(function (a) {
+      var d = Math.abs(a.x - x) + Math.abs(a.y - y);
+      if (d < bestD) { best = a; bestD = d; }
+    });
+    if (best) setCurrentAgent(best);
+  });
+
+  function appendLocal(msg) {
+    var div = document.createElement("div");
+    div.textContent = "> " + msg;
+    outputLog.prepend(div);
   }
 
-  if (x === world.arcade.x && y === world.arcade.y) {
-    arcadePanel.classList.remove("hidden");
-    const player = agents[0];
-    player.state = "Playing";
-    player.target = { x: world.arcade.x, y: world.arcade.y };
-    setCurrentAgent(player);
-    log(`${player.name} is playing at the arcade.`);
-    return;
+  // --- Main loop: fixed-timestep sim, rAF render ------------------------------------
+
+  var msPerTick = 1000 / Sim.CFG.tickHz;
+  var acc = 0, last = performance.now();
+
+  function loop(now) {
+    var dt = Math.min(250, now - last);
+    last = now;
+    if (!paused) {
+      acc += dt * speed;
+      var safety = 64;
+      while (acc >= msPerTick && safety-- > 0) {
+        Sim.step(state);
+        acc -= msPerTick;
+      }
+    }
+    R.draw(ctx, state, { timeOverride: timeOverride });
+    drainEvents();
+    refreshAgentCard();
+    requestAnimationFrame(loop);
   }
-});
 
-setCurrentAgent(currentAgent);
-renderTasks();
-log("System ready. Click a desk to control an agent.");
-
-tick();
+  setCurrentAgent(state.agents[0]);
+  renderTasks();
+  appendLocal("System ready. Click a desk to control an agent. Try ?seed= ?speed= ?time= in the URL.");
+  requestAnimationFrame(loop);
+})();

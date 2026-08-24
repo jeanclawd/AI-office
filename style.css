@@ -25,14 +25,38 @@ body {
 #world {
   position: relative;
   padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
 }
 
+/* Aspect-true fit: the canvas backing store is an integer multiple of the
+   native frame; CSS only ever shrinks it uniformly. */
 #worldCanvas {
-  width: 100%;
-  height: calc(100vh - 32px);
+  max-width: 100%;
+  max-height: calc(100vh - 32px);
   border: 2px solid #303b4d;
   background: #0f1620;
   image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+#sim-controls {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  display: flex;
+  gap: 6px;
+}
+
+#sim-controls button {
+  background: rgba(10, 15, 25, 0.7);
+  border: 1px solid #334155;
+  color: var(--text);
+  font-size: 10px;
+  padding: 6px 8px;
+  cursor: pointer;
 }
 
 #overlay-label {
@@ -99,6 +123,29 @@ body {
 .agent-name { font-size: 12px; margin-bottom: 6px; }
 .agent-status { font-size: 10px; color: var(--muted); }
 
+.agent-meta { flex: 1; }
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.stat-label { font-size: 8px; color: var(--muted); width: 24px; }
+
+.stat-bar {
+  flex: 1;
+  height: 7px;
+  background: #0f1620;
+  border: 1px solid #39465b;
+  display: block;
+}
+
+.stat-fill { display: block; height: 100%; width: 0; transition: width 0.3s; }
+.stat-fill.energy { background: var(--accent); }
+.stat-fill.morale { background: var(--accent-2); }
+
 .task-list-title { font-size: 10px; margin-bottom: 8px; color: var(--muted); }
 
 .task-list ul { list-style: none; padding: 0; margin: 0 0 12px 0; }
@@ -118,6 +165,31 @@ body {
 }
 
 .task-status.done { background: var(--accent-2); }
+
+.task-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-progress {
+  width: 48px;
+  height: 6px;
+  background: #0f1620;
+  border: 1px solid #39465b;
+  display: block;
+  flex-shrink: 0;
+}
+
+.task-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.hidden { display: none !important; }
 
 .ghost {
   background: transparent;
