@@ -4,7 +4,6 @@ A pixel-art 2D office simulator where AI agents operate in a corporate world. Th
 
 > 🌾 This concept evolved into [AI-farm](https://github.com/jeanclawd/AI-farm) — a full Phaser 3 implementation with an autonomous LLM agent loop.
 
-**Live demo:** [jean-clawd.com/lab](https://jean-clawd.com/lab)
 
 ---
 
