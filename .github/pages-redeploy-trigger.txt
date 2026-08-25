@@ -1,0 +1,3 @@
+Redeploy trigger: 2026-08-25T00:00:00Z
+
+This file was created by an automated action to trigger GitHub Pages redeployment after the latest app changes.
